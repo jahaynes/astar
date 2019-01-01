@@ -1,101 +1,76 @@
-import           Data.Heap   (Heap)
-import qualified Data.Heap                 as H
-import           Data.Maybe  (mapMaybe)
-import           Data.Set    (Set)
-import qualified Data.Set                  as S
-import           Data.Vector (Vector, (!))
-import qualified Data.Vector               as V
+module AStar ( astar
+             , Goal(Goal)
+             , Start(Start)
+             , Solver(..)
+             ) where
 
-type Grid a = Vector (Vector a)
+import qualified Data.Heap   as H
+import           Data.Monoid      ((<>), mempty)
+import qualified Data.Set    as S
 
-globalGrid :: Vector (Vector Char)
-globalGrid = V.fromList . map V.fromList
-     $ [ "***********"
-       , "*g        *"
-       , "***** *** *"
-       , "    ****  *"
-       , "    *     *"
-       , "    * s   *"
-       , "    *******"
-       ]
+newtype Start coord = Start coord
 
-find :: Eq a => a -> Grid a -> Maybe (Int, Int)
-find item = goRow 0
-    where
-    goRow i rows
-        | V.null rows = Nothing
-        | otherwise =
-            case goCol 0 (V.head rows) of
-                Just ij -> Just ij
-                Nothing -> goRow (i+1) (V.tail rows)
-            where
-            goCol j cols
-                | V.null cols         = Nothing
-                | V.head cols == item = Just (i,j)
-                | otherwise           = goCol (j+1) (V.tail cols)
+newtype Goal coord = Goal coord
+                         deriving Eq
 
-data Step = Step { getPathCost      :: !Int
-                 , getHeuristicCost :: !Int
-                 , getCoord         :: !(Int, Int)
-                 , getPredecessor   :: !(Maybe Step)
-                 } deriving (Eq, Show)
+data Step coord cost = Step { getPathCost      :: !cost
+                            , getHeuristicCost :: !cost
+                            , getCoord         :: !coord
+                            , getPredecessor   :: !(Maybe (Step coord cost))
+                            } deriving (Eq, Show)
 
-instance Ord Step where
-    Step p1 h1 c1 pr1 <= Step p2 h2 c2 pr2 = (p1+h1, c1, pr1) <= (p2+h2, c2, pr2)
+instance (Eq coord, Ord coord, Monoid c, Eq c, Ord c) => Ord (Step coord c) where
+    Step p1 h1 c1 pr1 <= Step p2 h2 c2 pr2 = (p1 <> h1, c1, pr1) <= (p2 <> h2, c2, pr2)
 
-main :: IO ()
-main = do
-    let (Just start) = find 's' globalGrid
-        (Just goal)  = find 'g' globalGrid
-    print $ astar globalGrid start goal
+data Solver coord cost = Solver { getStart  :: Start coord
+                                , getGoal   :: Goal coord
+                                , heuristic :: coord -> Goal coord -> cost
+                                , expand    :: cost -> coord -> [(coord, cost)]
+                                }
 
-astar :: Grid Char -> (Int, Int) -> (Int, Int) -> Maybe [(Int, Int)]
-astar grid start goal = do
+astar :: (Eq coord, Ord coord, Monoid cost, Eq cost, Ord cost)
+      => Solver coord cost
+      -> Maybe [coord]
+astar solver = extractPath [] <$> findPath solver
 
-    let step0 = Step { getPathCost      = 0
-                     , getHeuristicCost = dist start goal
+extractPath :: [coord] -> Step coord cost -> [coord]
+extractPath acc step =
+    let acc' = getCoord step : acc
+    in case getPredecessor step of
+            Just step' -> extractPath acc' step'
+            Nothing    -> acc'
+
+findPath :: (Ord cost, Ord coord, Monoid cost)
+         => Solver coord cost
+         -> Maybe (Step coord cost)
+findPath solver = do 
+
+    let (Start start) = getStart solver
+
+    let step0 = Step { getPathCost      = mempty
+                     , getHeuristicCost = heuristic solver start (getGoal solver)
                      , getCoord         = start
                      , getPredecessor   = Nothing
                      }
 
-    extractPath [] <$> findPath (H.singleton step0) S.empty
-
+    go (H.singleton step0) S.empty
     where
-    extractPath :: [(Int, Int)] -> Step -> [(Int, Int)]
-    extractPath acc step =
-        let acc' = getCoord step : acc
-        in case getPredecessor step of
-              Just step' -> extractPath acc' step'
-              Nothing    -> acc'
+    go fringe done = do
 
-    findPath :: Heap Step -> Set (Int, Int) -> Maybe Step
-    findPath fringe done = do
+        (f, ringe) <- H.uncons fringe
 
-        (s@(Step pc _ c@(i,j) _), fs) <- H.uncons fringe
+        let coord = getCoord f
 
-        if c == goal
-            then Just s
+        if Goal coord == getGoal solver
+            then Just f
             else do
-                let nextCoords = mapMaybe (check done) [ (i+1, j  )
-                                                       , (i  , j+1)
-                                                       , (i-1, j  )
-                                                       , (i  , j-1)
-                                                       ]
-                    nextSteps = H.fromList
-                              . map (\nc -> Step (pc+1) (dist nc goal) nc (Just s))
-                              $ nextCoords
 
-                findPath (H.union fs nextSteps) (S.insert c done)
+                let costedCandidates = filter (\(nc, _) -> not $ S.member nc done)
+                                     . expand solver (getPathCost f)
+                                     $ coord
 
-    dist :: (Int, Int) -> (Int, Int) -> Int
-    dist (a,b) (c,d) = abs (a-c) + abs (b-d)
+                let nextSteps = H.fromList
+                                . map (\(nc, pc) -> Step pc (heuristic solver nc (getGoal solver)) nc (Just f))
+                                $ costedCandidates
 
-    check :: Set (Int, Int) -> (Int, Int) -> Maybe (Int, Int)
-    check done (i,j)
-        | i <  0                   = Nothing
-        | i >= V.length grid       = Nothing
-        | j <  0                   = Nothing
-        | j >= V.length (grid ! i) = Nothing
-        | (i,j) `S.member` done    = Nothing
-        | grid ! i ! j == '*'      = Nothing
-        | otherwise                = Just (i, j)
+                go (ringe <> nextSteps) (S.insert coord done)

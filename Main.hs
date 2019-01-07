@@ -4,6 +4,7 @@ module Main where
 
 import AStar
 
+import           Data.Monoid ((<>))
 import           Data.Vector (Vector, (!))
 import qualified Data.Vector as V
 
@@ -35,9 +36,12 @@ find item = goRow 0
                 | V.head cols == item = Just $ Coord (i,j)
                 | otherwise           = goCol (j+1) (V.tail cols)
 
-instance Monoid Int where
-    mappend a b = a + b
-    mempty = 0
+newtype Cost = Cost Float
+                   deriving (Eq, Ord)
+
+instance Monoid Cost where
+    mappend (Cost a) (Cost b) = Cost(a + b)
+    mempty = Cost 0
 
 newtype Coord = Coord (Int, Int)
                     deriving (Eq, Ord, Show)
@@ -58,11 +62,11 @@ main = do
     print $ astar solver
 
     where
-    dist :: Coord -> Goal Coord -> Int
-    dist (Coord (a,b)) (Goal (Coord (c,d))) = abs (a-c) + abs (b-d)
+    dist :: Coord -> Goal Coord -> Cost
+    dist (Coord(a,b)) (Goal(Coord(c,d))) = Cost(fromIntegral $ abs(a-c)) <> Cost(fromIntegral $ abs(b-d))
 
-    expansion :: Int -> Coord -> [(Coord, Int)]
-    expansion pc (Coord (ci,cj)) = map (, succ pc)
+    expansion :: Cost -> Coord -> [(Coord, Cost)]
+    expansion pc (Coord (ci,cj)) = map (, inc pc)
                                  . filter check
                                  $ map Coord [ (ci+1, cj  )
                                              , (ci  , cj+1)
@@ -70,6 +74,10 @@ main = do
                                              , (ci  , cj-1)
                                              ]
         where
+        inc :: Cost -> Cost
+        inc (Cost a) = Cost (a+1)
+
+        check :: Coord -> Bool
         check (Coord (i,j)) = i >= 0
                            && i < V.length grid
                            && j >= 0

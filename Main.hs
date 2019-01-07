@@ -36,10 +36,10 @@ find item = goRow 0
                 | V.head cols == item = Just $ Coord (i,j)
                 | otherwise           = goCol (j+1) (V.tail cols)
 
-newtype Cost = Cost Float
+data Cost a = Cost a
                    deriving (Eq, Ord)
 
-instance Monoid Cost where
+instance Num a => Monoid (Cost a) where
     mappend (Cost a) (Cost b) = Cost(a + b)
     mempty = Cost 0
 
@@ -62,10 +62,10 @@ main = do
     print $ astar solver
 
     where
-    dist :: Coord -> Goal Coord -> Cost
+    dist :: Num a => Coord -> Goal Coord -> Cost a
     dist (Coord(a,b)) (Goal(Coord(c,d))) = Cost(fromIntegral $ abs(a-c)) <> Cost(fromIntegral $ abs(b-d))
 
-    expansion :: Cost -> Coord -> [(Coord, Cost)]
+    expansion :: Enum a => Cost a -> Coord -> [(Coord, Cost a)]
     expansion pc (Coord (ci,cj)) = map (, inc pc)
                                  . filter check
                                  $ map Coord [ (ci+1, cj  )
@@ -74,8 +74,8 @@ main = do
                                              , (ci  , cj-1)
                                              ]
         where
-        inc :: Cost -> Cost
-        inc (Cost a) = Cost (a+1)
+        inc :: Enum a => Cost a -> Cost a
+        inc (Cost a) = Cost (succ a)
 
         check :: Coord -> Bool
         check (Coord (i,j)) = i >= 0

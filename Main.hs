@@ -3,6 +3,7 @@
 module Main where
 
 import AStar
+import Optimise
 
 import           Data.Monoid ((<>))
 import           Data.Vector (Vector, (!))
@@ -59,7 +60,17 @@ main = do
                         , expand    = expansion
                         }
 
-    print $ astar solver
+        optimiser = Optimise { isFree = check }
+
+    case astar solver of
+        Just path -> do
+            putStrLn "Unoptimised:"
+            mapM_ print path
+            putStrLn ""
+
+            optimiseWith optimiser path
+
+        Nothing   -> putStrLn "No path found"
 
     where
     dist :: Num a => Coord -> Goal Coord -> Cost a
@@ -77,9 +88,9 @@ main = do
         inc :: Enum a => Cost a -> Cost a
         inc (Cost a) = Cost (succ a)
 
-        check :: Coord -> Bool
-        check (Coord (i,j)) = i >= 0
-                           && i < V.length grid
-                           && j >= 0
-                           && j < V.length (grid ! i)
-                           && grid ! i ! j /= '*'
+check :: Coord -> Bool
+check (Coord (i,j)) = i >= 0
+                    && i < V.length grid
+                    && j >= 0
+                    && j < V.length (grid ! i)
+                    && grid ! i ! j /= '*'

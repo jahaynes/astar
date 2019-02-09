@@ -60,7 +60,7 @@ main = do
                         , expand    = expansion
                         }
 
-        optimiser = Optimise { isFree = check }
+        optimiser = Optimise { getCost = cost, isFree = check }
 
     case astar solver of
         Just path -> do
@@ -74,7 +74,7 @@ main = do
 
     where
     dist :: Num a => Coord -> Goal Coord -> Cost a
-    dist (Coord(a,b)) (Goal(Coord(c,d))) = Cost(fromIntegral $ abs(a-c)) <> Cost(fromIntegral $ abs(b-d))
+    dist s (Goal g) = cost s g
 
     expansion :: Enum a => Cost a -> Coord -> [(Coord, Cost a)]
     expansion pc (Coord (ci,cj)) = map (, inc pc)
@@ -87,6 +87,9 @@ main = do
         where
         inc :: Enum a => Cost a -> Cost a
         inc (Cost a) = Cost (succ a)
+        
+cost :: Num a => Coord -> Coord -> Cost a
+cost (Coord(a,b)) (Coord(c,d)) = Cost(fromIntegral $ abs(a-c)) <> Cost(fromIntegral $ abs(b-d))
 
 check :: Coord -> Bool
 check (Coord (i,j)) = i >= 0
